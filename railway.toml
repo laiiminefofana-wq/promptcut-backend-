@@ -1,0 +1,3 @@
+[deploy]
+[deploy.variables]
+RAILPACK_DEPLOY_APT_PACKAGES = "ffmpeg"
