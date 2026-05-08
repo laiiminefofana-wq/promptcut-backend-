@@ -7,7 +7,6 @@ const cors = require("cors");
 
 const app = express();
 
-// ENABLE CORS
 app.use(cors());
 
 if (!fs.existsSync("uploads")) {
@@ -21,7 +20,10 @@ if (!fs.existsSync("outputs")) {
 app.use("/outputs", express.static("outputs"));
 
 const upload = multer({
-  dest: "uploads/"
+  dest: "uploads/",
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  }
 });
 
 app.get("/", (req, res) => {
@@ -43,17 +45,22 @@ app.post("/edit", upload.single("video"), (req, res) => {
   const outputPath = path.join("outputs", outputName);
 
   ffmpeg(inputPath)
+
+    // LIGHTER PROCESSING
+    .size("720x1280")
+
     .videoFilters([
-      "scale=1080:1920:force_original_aspect_ratio=increase",
-      "crop=1080:1920",
-      "eq=contrast=1.05:brightness=0.02:saturation=1.15"
+      "crop=720:1280"
     ])
+
     .outputOptions([
       "-preset ultrafast",
-      "-crf 28"
+      "-crf 32"
     ])
+
     .videoCodec("libx264")
     .audioCodec("aac")
+
     .save(outputPath)
 
     .on("end", () => {
