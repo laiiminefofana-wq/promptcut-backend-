@@ -17,38 +17,62 @@ app.post("/upload", upload.single("video"), (req, res) => {
   }
 
   const inputPath = req.file.path;
-  const outputPath = path.join("outputs", `output-${Date.now()}.mp4`);
 
-  const command = `
-  ffmpeg -y -i "${inputPath}" \
-  -af silenceremove=start_periods=1:start_threshold=-40dB:stop_periods=1:stop_threshold=-40dB \
-  -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" \
-  -c:v libx264 \
-  -preset ultrafast \
-  -crf 28 \
-  -c:a aac \
-  -b:a 128k \
-  "${outputPath}"
+  const subtitlePath = `outputs/subtitles-${Date.now()}.srt`;
+  const outputPath = `outputs/output-${Date.now()}.mp4`;
+
+  // Step 1: Generate subtitles with Whisper
+  const whisperCommand = `
+  whisper "${inputPath}" --model tiny --output_dir outputs
   `;
 
-  exec(command, (error, stdout, stderr) => {
-    if (error) {
-      console.error("FFmpeg error:", stderr);
-      return res.status(500).send(stderr);
+  exec(whisperCommand, (whisperError) => {
+    if (whisperError) {
+      console.error("Whisper error:", whisperError);
+      return res.status(500).send("Subtitle generation failed");
     }
 
-    res.download(outputPath, () => {
-      fs.unlinkSync(inputPath);
-      fs.unlinkSync(outputPath);
+    // Find generated subtitle file
+    const files = fs.readdirSync("outputs");
+    const srtFile = files.find(file => file.endsWith(".srt"));
+
+    if (!srtFile) {
+      return res.status(500).send("Subtitle file not found");
+    }
+
+    const srtPath = path.join("outputs", srtFile);
+
+    // Step 2: Process video + burn subtitles
+    const ffmpegCommand = `
+    ffmpeg -y -i "${inputPath}" \
+    -vf "subtitles=${srtPath}:force_style='Fontsize=18,PrimaryColour=&Hffffff&,OutlineColour=&H000000&,BorderStyle=3,Outline=2',scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" \
+    -af silenceremove=start_periods=1:start_threshold=-40dB:stop_periods=1:stop_threshold=-40dB \
+    -c:v libx264 \
+    -preset ultrafast \
+    -crf 28 \
+    -c:a aac \
+    "${outputPath}"
+    `;
+
+    exec(ffmpegCommand, (ffmpegError, stdout, stderr) => {
+      if (ffmpegError) {
+        console.error(stderr);
+        return res.status(500).send(stderr);
+      }
+
+      res.download(outputPath, () => {
+        fs.unlinkSync(inputPath);
+      });
     });
   });
 });
 
 app.get("/", (req, res) => {
-  res.send("PromptCut AI Viral Editor Running 🚀");
+  res.send("PromptCut AI Editor Running 🚀");
 });
 
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
