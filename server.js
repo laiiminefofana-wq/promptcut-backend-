@@ -6,14 +6,11 @@ const path = require("path");
 
 const app = express();
 
-// Ensure folders exist
 if (!fs.existsSync("uploads")) fs.mkdirSync("uploads");
 if (!fs.existsSync("outputs")) fs.mkdirSync("outputs");
 
-// File upload setup
 const upload = multer({ dest: "uploads/" });
 
-// Upload route
 app.post("/upload", upload.single("video"), (req, res) => {
   if (!req.file) {
     return res.status(400).send("No file uploaded");
@@ -24,6 +21,7 @@ app.post("/upload", upload.single("video"), (req, res) => {
 
   const command = `
   ffmpeg -y -i "${inputPath}" \
+  -af silenceremove=start_periods=1:start_threshold=-40dB:stop_periods=1:stop_threshold=-40dB \
   -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" \
   -c:v libx264 \
   -preset ultrafast \
@@ -40,19 +38,16 @@ app.post("/upload", upload.single("video"), (req, res) => {
     }
 
     res.download(outputPath, () => {
-      // Clean up
       fs.unlinkSync(inputPath);
       fs.unlinkSync(outputPath);
     });
   });
 });
 
-// Test route
 app.get("/", (req, res) => {
-  res.send("PromptCut backend is running 🚀");
+  res.send("PromptCut AI Viral Editor Running 🚀");
 });
 
-// Use dynamic port (IMPORTANT for Railway)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
