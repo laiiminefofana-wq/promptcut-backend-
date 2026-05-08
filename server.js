@@ -1,51 +1,76 @@
 const express = require("express");
 const multer = require("multer");
 const ffmpeg = require("fluent-ffmpeg");
-const path = require("path");
 const fs = require("fs");
+const path = require("path");
 
 const app = express();
 
-const upload = multer({ dest: "uploads/" });
+// Ensure folders exist
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
 
+if (!fs.existsSync("outputs")) {
+  fs.mkdirSync("outputs");
+}
+
+// Serve edited videos
 app.use("/outputs", express.static("outputs"));
 
-app.get("/", (req, res) => {
-  res.send("PromptCut backend running");
+// Multer upload setup
+const upload = multer({
+  dest: "uploads/"
 });
 
-app.post("/edit", upload.single("video"), async (req, res) => {
+// Home route
+app.get("/", (req, res) => {
+  res.send("PromptCut backend running 🚀");
+});
+
+// Video editing route
+app.post("/edit", upload.single("video"), (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: "No video uploaded"
+      });
+    }
+
     const inputPath = req.file.path;
 
     const outputName = `edited-${Date.now()}.mp4`;
-    const outputPath = path.join("outputs", outputName);
 
-    if (!fs.existsSync("outputs")) {
-      fs.mkdirSync("outputs");
-    }
+    const outputPath = path.join("outputs", outputName);
 
     ffmpeg(inputPath)
       .videoFilters([
         "scale=1080:1920:force_original_aspect_ratio=increase",
         "crop=1080:1920",
-        "eq=contrast=1.1:brightness=0.03:saturation=1.2"
+        "eq=contrast=1.05:brightness=0.02:saturation=1.15"
       ])
       .outputOptions([
-        "-preset fast",
-        "-crf 23"
+        "-preset ultrafast",
+        "-crf 28"
       ])
+      .videoCodec("libx264")
+      .audioCodec("aac")
       .save(outputPath)
+
       .on("end", () => {
+        console.log("Video processing complete");
+
         res.json({
           success: true,
           video: `/outputs/${outputName}`
         });
       })
+
       .on("error", (err) => {
-        console.log(err);
+        console.log("FFmpeg Error:", err);
+
         res.status(500).json({
-          error: "Video processing failed"
+          error: err.message
         });
       });
 
@@ -53,11 +78,12 @@ app.post("/edit", upload.single("video"), async (req, res) => {
     console.log(error);
 
     res.status(500).json({
-      error: "Server error"
+      error: error.message
     });
   }
 });
 
+// Railway port
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
