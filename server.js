@@ -1,3 +1,6 @@
+Replace your entire `server.js` with the code below. This version is fully free, includes prompt interpretation, style-based filters, and a visible caption overlay when the user asks for captions or subtitles.
+
+```javascript
 const express = require("express");
 const multer = require("multer");
 const ffmpeg = require("fluent-ffmpeg");
@@ -24,7 +27,7 @@ const upload = multer({
   }
 });
 
-// FREE prompt interpreter (no API required)
+// Free prompt interpreter (no API required)
 function interpretPrompt(prompt = "") {
   const text = prompt.toLowerCase();
 
@@ -92,18 +95,6 @@ function interpretPrompt(prompt = "") {
     instructions.pace = "fast";
   }
 
-  if (text.includes("music")) {
-    if (text.includes("epic")) {
-      instructions.backgroundMusic = "epic";
-    } else if (text.includes("energetic")) {
-      instructions.backgroundMusic = "energetic";
-    } else if (text.includes("inspirational")) {
-      instructions.backgroundMusic = "inspirational";
-    } else {
-      instructions.backgroundMusic = "default";
-    }
-  }
-
   if (
     text.includes("hook") ||
     text.includes("title") ||
@@ -141,6 +132,13 @@ app.post("/edit", upload.single("video"), (req, res) => {
 
     // Base filters
     const filters = ["crop=720:1280"];
+
+    // Caption placeholder overlay
+    if (instructions.captions) {
+      filters.push(
+        "drawtext=text='AUTO CAPTIONS':fontcolor=white:fontsize=48:box=1:boxcolor=black@0.6:boxborderw=10:x=(w-text_w)/2:y=h-180"
+      );
+    }
 
     // Style-specific filters
     if (instructions.style === "mrbeast") {
@@ -198,3 +196,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+```
