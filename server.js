@@ -4,22 +4,16 @@ const ffmpeg = require("fluent-ffmpeg");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
-const OpenAI = require("openai");
 
 const app = express();
 
 app.use(cors());
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 // Ensure folders exist
 if (!fs.existsSync("uploads")) fs.mkdirSync("uploads");
 if (!fs.existsSync("outputs")) fs.mkdirSync("outputs");
 
-// Serve edited videos
+// Serve processed videos
 app.use("/outputs", express.static("outputs"));
 
 // Upload configuration
@@ -30,29 +24,95 @@ const upload = multer({
   }
 });
 
-// Convert natural-language prompt into JSON instructions
-async function interpretPrompt(prompt) {
-  const response = await openai.responses.create({
-    model: "gpt-5-mini",
-    input: `
-Convert this video editing request into valid JSON only.
+// FREE prompt interpreter (no API required)
+function interpretPrompt(prompt = "") {
+  const text = prompt.toLowerCase();
 
-Prompt: "${prompt}"
+  const instructions = {
+    style: "viral",
+    captions: false,
+    zoomCuts: false,
+    backgroundMusic: "none",
+    pace: "normal",
+    hookTitle: false
+  };
 
-Return ONLY JSON with these keys:
-{
-  "style": "string",
-  "captions": true,
-  "zoomCuts": true,
-  "backgroundMusic": "string",
-  "pace": "string",
-  "hookTitle": true
-}
-`
-  });
+  // Styles
+  if (text.includes("mrbeast")) {
+    instructions.style = "mrbeast";
+    instructions.zoomCuts = true;
+    instructions.pace = "very_fast";
+    instructions.backgroundMusic = "energetic";
+    instructions.hookTitle = true;
+  }
 
-  const text = response.output_text.trim();
-  return JSON.parse(text);
+  if (text.includes("cinematic")) {
+    instructions.style = "cinematic";
+    instructions.backgroundMusic = "epic";
+  }
+
+  if (text.includes("dramatic")) {
+    instructions.style = "dramatic";
+    instructions.backgroundMusic = "intense";
+  }
+
+  if (text.includes("podcast")) {
+    instructions.style = "podcast";
+  }
+
+  if (text.includes("trailer")) {
+    instructions.style = "trailer";
+    instructions.backgroundMusic = "epic";
+    instructions.pace = "fast";
+    instructions.hookTitle = true;
+  }
+
+  if (text.includes("motivational")) {
+    instructions.style = "motivational";
+    instructions.backgroundMusic = "inspirational";
+  }
+
+  if (text.includes("funny")) {
+    instructions.style = "funny";
+    instructions.pace = "very_fast";
+  }
+
+  // Features
+  if (text.includes("caption") || text.includes("subtitle")) {
+    instructions.captions = true;
+  }
+
+  if (text.includes("zoom")) {
+    instructions.zoomCuts = true;
+  }
+
+  if (text.includes("very fast")) {
+    instructions.pace = "very_fast";
+  } else if (text.includes("fast")) {
+    instructions.pace = "fast";
+  }
+
+  if (text.includes("music")) {
+    if (text.includes("epic")) {
+      instructions.backgroundMusic = "epic";
+    } else if (text.includes("energetic")) {
+      instructions.backgroundMusic = "energetic";
+    } else if (text.includes("inspirational")) {
+      instructions.backgroundMusic = "inspirational";
+    } else {
+      instructions.backgroundMusic = "default";
+    }
+  }
+
+  if (
+    text.includes("hook") ||
+    text.includes("title") ||
+    text.includes("headline")
+  ) {
+    instructions.hookTitle = true;
+  }
+
+  return instructions;
 }
 
 // Home route
@@ -61,7 +121,7 @@ app.get("/", (req, res) => {
 });
 
 // Main editing route
-app.post("/edit", upload.single("video"), async (req, res) => {
+app.post("/edit", upload.single("video"), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -70,11 +130,8 @@ app.post("/edit", upload.single("video"), async (req, res) => {
     }
 
     const prompt = req.body.prompt || "Make this viral";
+    const instructions = interpretPrompt(prompt);
 
-    // Ask OpenAI to interpret the prompt
-    const instructions = await interpretPrompt(prompt);
-
-    // Log instructions in Railway logs
     console.log("User Prompt:", prompt);
     console.log("AI Instructions:", instructions);
 
@@ -82,12 +139,30 @@ app.post("/edit", upload.single("video"), async (req, res) => {
     const outputName = `edited-${Date.now()}.mp4`;
     const outputPath = path.join("outputs", outputName);
 
-    // Basic processing (you will expand this later)
+    // Base filters
+    const filters = ["crop=720:1280"];
+
+    // Style-specific filters
+    if (instructions.style === "mrbeast") {
+      filters.push("eq=contrast=1.2:saturation=1.3");
+    } else if (instructions.style === "cinematic") {
+      filters.push("eq=contrast=1.15:saturation=1.05");
+    } else if (instructions.style === "dramatic") {
+      filters.push("eq=contrast=1.3:saturation=0.8");
+    } else if (instructions.style === "motivational") {
+      filters.push("eq=contrast=1.1:saturation=1.2");
+    } else if (instructions.style === "funny") {
+      filters.push("eq=contrast=1.05:saturation=1.4");
+    }
+
+    // Optional zoom effect
+    if (instructions.zoomCuts) {
+      filters.push("scale=720:1280");
+    }
+
     ffmpeg(inputPath)
       .size("720x1280")
-      .videoFilters([
-        "crop=720:1280"
-      ])
+      .videoFilters(filters)
       .outputOptions([
         "-preset ultrafast",
         "-crf 32"
@@ -95,7 +170,6 @@ app.post("/edit", upload.single("video"), async (req, res) => {
       .videoCodec("libx264")
       .audioCodec("aac")
       .save(outputPath)
-
       .on("end", () => {
         res.json({
           success: true,
@@ -104,18 +178,14 @@ app.post("/edit", upload.single("video"), async (req, res) => {
           video: `/outputs/${outputName}`
         });
       })
-
       .on("error", (err) => {
         console.log("FFmpeg Error:", err);
-
         res.status(500).json({
           error: err.message
         });
       });
-
   } catch (error) {
     console.log("Server Error:", error);
-
     res.status(500).json({
       error: error.message
     });
