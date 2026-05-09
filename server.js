@@ -1,5 +1,3 @@
-Replace your entire `server.js` with the code below. This version is fully free, includes prompt interpretation, style-based filters, and a visible caption overlay when the user asks for captions or subtitles.
-
 ```javascript
 const express = require("express");
 const multer = require("multer");
